@@ -1,18 +1,20 @@
 package com.morristaedt.mirror.modules;
 
-import android.content.res.Resources;
 import android.os.AsyncTask;
+import android.support.annotation.NonNull;
 import android.util.Log;
 
-import com.morristaedt.mirror.R;
+import com.morristaedt.mirror.configuration.ConfigurationSettings;
 import com.morristaedt.mirror.requests.ForecastRequest;
 import com.morristaedt.mirror.requests.ForecastResponse;
+import com.morristaedt.mirror.requests.OpenWeatherRequest;
+import com.morristaedt.mirror.requests.OpenWeatherResponse;
 import com.morristaedt.mirror.utils.WeekUtil;
 
 import java.util.Calendar;
 import java.util.List;
+import java.util.Locale;
 
-import retrofit.ErrorHandler;
 import retrofit.RestAdapter;
 import retrofit.RetrofitError;
 
@@ -27,27 +29,31 @@ public class ForecastModule {
         void onShouldBike(boolean showToday, boolean shouldBike);
     }
 
-    public static void getHourlyForecast(final Resources resources, final double lat, final double lon, final ForecastListener listener) {
+    /**
+     * @param apiKey   The api key for the forecast.io weather api
+     * @param units
+     * @param lat
+     * @param lon
+     * @param listener
+     */
+    public static void getForecastIOHourlyForecast(final String apiKey, final String units, final String lat, final String lon, final ForecastListener listener) {
         new AsyncTask<Void, Void, ForecastResponse>() {
 
             @Override
             protected ForecastResponse doInBackground(Void... params) {
                 RestAdapter restAdapter = new RestAdapter.Builder()
                         .setEndpoint("https://api.forecast.io")
-                        .setErrorHandler(new ErrorHandler() {
-                            @Override
-                            public Throwable handleError(RetrofitError cause) {
-                                Log.w("mirror", "Forecast error: " + cause);
-                                return null;
-                            }
-                        })
                         .build();
 
                 ForecastRequest service = restAdapter.create(ForecastRequest.class);
                 String excludes = "minutely,daily,flags";
-                String units = "si";
-                Log.d("mirror", "backgrounddd");
-                return service.getHourlyForecast(resources.getString(R.string.dark_sky_api_key), lat, lon, excludes, units);
+
+                try {
+                    return service.getHourlyForecast(apiKey, lat, lon, excludes, units, Locale.getDefault().getLanguage());
+                } catch (RetrofitError error) {
+                    Log.w("ForecastModule", "Forecast error: " + error.getMessage());
+                    return null;
+                }
             }
 
             @Override
@@ -57,7 +63,7 @@ public class ForecastModule {
                         listener.onWeatherToday(forecastResponse.currently.getDisplayTemperature() + " " + forecastResponse.currently.summary);
                     }
 
-                    if (WeekUtil.isWeekday() && !WeekUtil.afterFive() && forecastResponse.hourly != null && forecastResponse.hourly.data != null) {
+                    if (forecastResponse.hourly != null && forecastResponse.hourly.data != null && (ConfigurationSettings.isDemoMode() || WeekUtil.isWeekdayBeforeFive())) {
                         listener.onShouldBike(true, shouldBikeToday(forecastResponse.hourly.data));
                     } else {
                         listener.onShouldBike(false, true);
@@ -74,7 +80,6 @@ public class ForecastModule {
                     // Only check hourly forecast for today
                     if (hourCalendar.get(Calendar.DAY_OF_MONTH) == dayOfMonthToday) {
                         int hourOfDay = hourCalendar.get(Calendar.HOUR_OF_DAY);
-                        Log.i("mirror", "Hour of day is " + hourOfDay + " with precipProb " + hour.precipProbability);
                         if (hourOfDay >= 7 && hourOfDay <= 11) {
                             if (hour.precipProbability >= 0.3) {
                                 return false;
@@ -91,5 +96,54 @@ public class ForecastModule {
             }
         }.execute();
 
+    }
+
+    /**
+     * @param apiKey   The api key for the openweather api
+     * @param units
+     * @param lat
+     * @param lon
+     * @param listener
+     */
+    public static void getOpenWeatherForecast(final String apiKey, final String units, final String lat, final String lon, final ForecastListener listener) {
+        new AsyncTask<Void, Void, OpenWeatherResponse>() {
+
+            @Override
+            protected OpenWeatherResponse doInBackground(Void... params) {
+                RestAdapter restAdapter = new RestAdapter.Builder()
+                        .setEndpoint("http://api.openweathermap.org")
+                        .build();
+
+                OpenWeatherRequest service = restAdapter.create(OpenWeatherRequest.class);
+
+                try {
+                    return service.getCurrentForecast(apiKey, lat, lon, getOpenWeatherUnits(units), Locale.getDefault().getLanguage());
+                } catch (RetrofitError error) {
+                    Log.w("ForecastModule", "Forecast error: " + error.getMessage());
+                    return null;
+                }
+            }
+
+            @Override
+            protected void onPostExecute(OpenWeatherResponse response) {
+                if (response != null) {
+                    if (response.main != null) {
+                        listener.onWeatherToday(response.main.getDisplayTemperature() + " " + response.getWeatherDescription());
+                    }
+                }
+            }
+
+        }.execute();
+
+    }
+
+    @NonNull
+    private static String getOpenWeatherUnits(String units) {
+        if (units.equalsIgnoreCase(ForecastRequest.UNITS_SI)) {
+            return OpenWeatherRequest.UNITS_METRIC;
+        } else if (units.equalsIgnoreCase(ForecastRequest.UNITS_US)) {
+            return OpenWeatherRequest.UNITS_IMPERIAL;
+        }
+        return units;
     }
 }
