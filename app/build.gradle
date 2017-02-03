@@ -1,14 +1,4 @@
-buildscript {
-    repositories {
-        maven { url 'https://maven.fabric.io/public' }
-    }
-
-    dependencies {
-        classpath 'io.fabric.tools:gradle:1.+'
-    }
-}
 apply plugin: 'com.android.application'
-apply plugin: 'io.fabric'
 
 android {
     signingConfigs {
@@ -49,9 +39,6 @@ dependencies {
     compile 'com.squareup.picasso:picasso:2.5.2'
     compile 'com.github.ahorn:android-rss:cf40b89'
     compile 'com.google.android.gms:play-services-vision:8.1.0'
-    compile('com.crashlytics.sdk.android:crashlytics:2.5.2@aar') {
-        transitive = true;
-    }
 }
 
 def signingFile = rootProject.file('signing.properties')
